@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Condensate Interference Bench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an optics bench. The square camera screen sits left with its transport and readout plots below; the control rack sits right. Accent is the sodium D-line amber (589 nm). */
+:root{
+  --bg:#eceff2;
+  --panel:#ffffff;
+  --ink:#13202b;
+  --muted:#5a6977;
+  --line:#d3dae1;
+  --chip:#e2e7ec;
+  --accent:#a95f05;
+  --accent-ink:#ffffff;
+  --accent-soft:rgba(169,95,5,.13);
+  --screen:#05070b;
+  --f-display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b1015; --panel:#121a22; --ink:#e2e8ee; --muted:#8b9aa8; --line:#243240; --chip:#1a2632;
+    --accent:#f0a540; --accent-ink:#1b1006; --accent-soft:rgba(240,165,64,.16); --screen:#020305;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b1015; --panel:#121a22; --ink:#e2e8ee; --muted:#8b9aa8; --line:#243240; --chip:#1a2632;
+  --accent:#f0a540; --accent-ink:#1b1006; --accent-soft:rgba(240,165,64,.16); --screen:#020305;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:15px; line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:20px 40px;
+}
+.wrap{max-width:1240px; margin:0 auto; display:flex; flex-direction:column; gap:20px}
+header.top{display:flex; flex-direction:column; gap:4px}
+.eyebrow{font-family:var(--f-mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent)}
+h1{font-family:var(--f-display); font-weight:700; font-size:clamp(28px,4vw,40px); line-height:1.05; margin:0; text-wrap:balance; letter-spacing:-.005em}
+.lede{margin:4px 0 0; max-width:68ch; color:var(--muted)}
+.bench{display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start}
+@media (max-width:960px){ .bench{grid-template-columns:minmax(0,1fr)} }
+.stage{display:flex; flex-direction:column; gap:12px; min-width:0}
+.toolbar{display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center}
+.group{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.group > .lab{font-family:var(--f-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-right:2px}
+.seg{display:inline-flex; background:var(--chip); border-radius:8px; padding:3px; gap:2px; flex-wrap:wrap}
+button{font:inherit; color:inherit; cursor:pointer}
+.seg button{border:0; background:transparent; padding:5px 10px; border-radius:6px; font-family:var(--f-display); font-weight:600; font-size:14px; color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--panel); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg button:hover{color:var(--ink)}
+.btn{border:1px solid var(--line); background:var(--panel); padding:6px 12px; border-radius:7px; font-family:var(--f-display); font-weight:600; font-size:14px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+button:focus-visible, input:focus-visible, select:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.screenwrap{display:flex; justify-content:center}
+.screen{position:relative; width:100%; max-width:680px; aspect-ratio:1/1; background:var(--screen); border-radius:10px; overflow:hidden; max-height:80vh}
+.screen canvas{position:absolute; inset:0; width:100%; height:100%; touch-action:none; display:block}
+.status{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:rgba(5,7,11,.82); color:#f3e3c4; font-family:var(--f-mono); font-size:13px; padding:10px 14px; border-radius:8px; border:1px solid rgba(240,165,64,.4); pointer-events:none; white-space:nowrap}
+.hint{font-size:13px; color:var(--muted); margin:0}
+.transport{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.transport input[type=range]{flex:1 1 200px; min-width:0}
+.clock{font-family:var(--f-mono); font-size:14px; font-variant-numeric:tabular-nums; min-width:9ch}
+.chip{font-family:var(--f-mono); font-size:11px; letter-spacing:.05em; text-transform:uppercase; padding:3px 8px; border-radius:99px; background:var(--accent-soft); color:var(--accent); white-space:nowrap}
+.chip.busy{background:var(--chip); color:var(--muted)}
+.readout{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.readout div{background:var(--panel); padding:8px 12px; display:flex; flex-direction:column; gap:2px; min-width:0}
+.readout dt{font-size:12px; color:var(--muted)}
+.readout dd{margin:0; font-family:var(--f-mono); font-size:15px; font-variant-numeric:tabular-nums}
+.plots{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+@media (max-width:640px){ .plots{grid-template-columns:1fr} }
+.plot{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px 8px; display:flex; flex-direction:column; gap:6px; min-width:0}
+.plot-head{display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap}
+.plot h3{margin:0; font-family:var(--f-display); font-weight:600; font-size:15px}
+.plot canvas{width:100%; height:150px; display:block}
+.plot select{font:inherit; font-size:12px; padding:2px 4px; border-radius:6px; border:1px solid var(--line); background:var(--panel); color:var(--ink)}
+.rack{display:flex; flex-direction:column; gap:12px; min-width:0}
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px}
+.panel h2{margin:0; font-family:var(--f-display); font-weight:700; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+.ctl{display:flex; flex-direction:column; gap:3px}
+.ctl label{display:flex; justify-content:space-between; gap:8px; font-weight:500; font-size:14px}
+.val{font-family:var(--f-mono); font-size:13px; color:var(--accent); font-variant-numeric:tabular-nums}
+input[type=range]{width:100%; accent-color:var(--accent)}
+.ctl select{font:inherit; padding:5px 8px; border-radius:7px; border:1px solid var(--line); background:var(--panel); color:var(--ink)}
+.regions-head{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.regions-head .count{font-size:14px; font-weight:500; margin-right:auto}
+.btn.small{padding:3px 9px; font-size:13px}
+.regions{display:flex; flex-direction:column; gap:8px}
+.region{display:grid; grid-template-columns:18px auto 1fr auto; gap:8px; align-items:center}
+.sw{width:16px; height:16px; border-radius:50%; border:1px solid var(--line)}
+.region .nm{font-family:var(--f-display); font-weight:600; font-size:14px; white-space:nowrap}
+.region .nm small{font-family:var(--f-mono); font-weight:400; color:var(--muted); font-size:11px; margin-left:4px}
+.region output{font-family:var(--f-mono); font-size:12px; min-width:4ch; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums}
+.empty{font-size:13px; color:var(--muted)}
+.exps{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+.exp{text-align:left; border:1px solid var(--line); background:var(--panel); border-radius:8px; padding:7px 9px; display:flex; flex-direction:column; gap:1px}
+.exp:last-child{grid-column:1 / -1}
+.exp b{font-family:var(--f-display); font-weight:600; font-size:14px}
+.exp span{font-size:12px; color:var(--muted)}
+.exp:hover{border-color:var(--muted)}
+.exp[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-soft)}
+.exptext{font-size:13.5px; margin:0; line-height:1.5}
+.check{display:inline-flex; align-items:center; gap:6px; font-size:14px; font-weight:500; cursor:pointer}
+.check input{accent-color:var(--accent); width:16px; height:16px; margin:0}
+.notes{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px; border-top:1px solid var(--line); padding-top:18px}
+.notes h2{font-family:var(--f-display); font-weight:700; font-size:17px; margin:0 0 6px}
+.notes p, .notes li{font-size:14px; color:var(--muted); margin:0 0 8px; max-width:62ch}
+.notes ul{padding-left:18px; margin:0}
+.notes em{color:var(--ink); font-style:normal; font-weight:500}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">2D Gross–Pitaevskii · split-step Fourier · ħ = m = ω = 1</span>
+    <h1>Condensate Interference Bench</h1>
+    <p class="lede">Cut a trapped Bose–Einstein condensate with light-sheet barriers. Each piece gets its own phase. Then switch off the trap and watch the matter waves overlap and form fringes.</p>
+  </header>
+
+  <main class="bench">
+    <section class="stage">
+      <div class="toolbar">
+        <div class="group"><span class="lab">Tool</span>
+          <div class="seg" role="group" aria-label="Drawing tool">
+            <button id="toolDraw" aria-pressed="true">Draw barrier</button>
+            <button id="toolErase" aria-pressed="false">Erase</button>
+          </div>
+        </div>
+        <div class="group"><span class="lab">Presets</span>
+          <div class="seg" role="group" aria-label="Barrier presets">
+            <button data-preset="split" aria-pressed="false">Two halves</button>
+            <button data-preset="slices" aria-pressed="false">Three slices</button>
+            <button data-preset="quad" aria-pressed="false">Quadrants</button>
+            <button data-preset="tri" aria-pressed="false">Three wedges</button>
+            <button data-preset="ring" aria-pressed="false">Ring</button>
+            <button data-preset="none" aria-pressed="false">None</button>
+          </div>
+        </div>
+        <div class="group"><span class="lab">View</span>
+          <div class="seg" role="group" aria-label="View mode">
+            <button data-view="density" aria-pressed="true">Density</button>
+            <button data-view="phase" aria-pressed="false">Phase</button>
+            <button data-view="atoms" aria-pressed="false">Atoms</button>
+          </div>
+          <label class="check"><input type="checkbox" id="vort"> Mark vortices</label>
+        </div>
+      </div>
+      <p class="hint" id="toolHint">Drag across the cloud to place a barrier. Draw it all the way through the cloud to cut off a separate part. Drawing returns the run to t = 0.</p>
+
+      <div class="screenwrap">
+        <div class="screen" id="screen">
+          <canvas id="view" aria-label="Simulated column density of the condensate"></canvas>
+          <div class="status" id="status" hidden></div>
+        </div>
+      </div>
+
+      <div class="transport">
+        <button class="btn primary" id="play">Pause</button>
+        <button class="btn" id="restart">Run again</button>
+        <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Time">
+        <span class="clock" id="clock">t = 0.00</span>
+        <span class="chip" id="stageChip">In trap</span>
+      </div>
+
+      <dl class="readout">
+        <div><dt>Condensate fraction</dt><dd id="roFrac">–</dd></div>
+        <div><dt>Separate parts</dt><dd id="roParts">–</dd></div>
+        <div><dt>Fringe contrast</dt><dd id="roV">–</dd></div>
+        <div><dt>Strongest period (Fourier)</dt><dd id="roLam">–</dd></div>
+        <div><dt>Ballistic estimate h·t/(m·d)</dt><dd id="roLamP">–</dd></div>
+      </dl>
+
+      <div class="plots">
+        <div class="plot">
+          <div class="plot-head">
+            <h3>Column density profile</h3>
+            <select id="axis" aria-label="Integration direction">
+              <option value="y">integrated along y</option>
+              <option value="x">integrated along x</option>
+            </select>
+          </div>
+          <canvas id="prof"></canvas>
+        </div>
+        <div class="plot">
+          <div class="plot-head"><h3>Fringe contrast over time</h3></div>
+          <canvas id="vis"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <aside class="rack">
+      <section class="panel">
+        <h2>Guided experiments</h2>
+        <div class="exps" id="exps">
+          <button class="exp" data-exp="andrews"><b>1 · Two condensates</b><span>Predict the fringe period</span></button>
+          <button class="exp" data-exp="random"><b>2 · Random phase</b><span>Where do the fringes land?</span></button>
+          <button class="exp" data-exp="heat"><b>3 · Heating</b><span>Contrast against temperature</span></button>
+          <button class="exp" data-exp="drift"><b>4 · Phase drift</b><span>Unequal parts during a hold</span></button>
+          <button class="exp" data-exp="merge"><b>5 · Merging in the trap</b><span>Vortices from three phases</span></button>
+        </div>
+        <p class="exptext" id="expText">Pick an experiment to load its settings. Each one comes with something to predict before you run it.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Cloud</h2>
+        <div class="ctl">
+          <label for="temp">Temperature <span class="val" id="tempV"></span></label>
+          <input type="range" id="temp" min="0" max="0.95" step="0.01" value="0.2">
+          <p class="hint" id="tempH"></p>
+        </div>
+        <div class="ctl">
+          <label for="dens">Density <span class="val" id="densV"></span></label>
+          <input type="range" id="dens" min="0" max="1000" step="1" value="731">
+          <p class="hint" id="densH"></p>
+        </div>
+        <div class="ctl">
+          <label for="noise">Thermal phase noise <span class="val" id="noiseV"></span></label>
+          <input type="range" id="noise" min="0" max="4" step="0.1" value="1">
+          <p class="hint">Random phase field with a 1/k spectrum, scaled by T/T<sub>c</sub> and 1/√μ.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Barriers and phases</h2>
+        <div class="ctl">
+          <label for="bw">Barrier width <span class="val" id="bwV"></span></label>
+          <input type="range" id="bw" min="0.15" max="1.2" step="0.05" value="0.35">
+        </div>
+        <div class="ctl">
+          <label for="bh">Barrier height <span class="val" id="bhV"></span></label>
+          <input type="range" id="bh" min="0.3" max="6" step="0.1" value="3">
+          <p class="hint">A barrier lower than μ lets the parts stay connected, so they share one phase.</p>
+        </div>
+        <div class="regions-head">
+          <span class="count" id="nparts">–</span>
+          <button class="btn small" id="randPh">Randomize</button>
+          <button class="btn small" id="zeroPh">All equal</button>
+        </div>
+        <div class="regions" id="regions"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Sequence</h2>
+        <div class="ctl">
+          <label>After the hold</label>
+          <div class="seg" role="group" aria-label="Release mode">
+            <button data-mode="tof" aria-pressed="true">Trap off (time of flight)</button>
+            <button data-mode="merge" aria-pressed="false">Barriers off, trap on</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label for="hold">Hold with barriers <span class="val" id="holdV"></span></label>
+          <input type="range" id="hold" min="0" max="3" step="0.05" value="0">
+          <p class="hint">Parts with different atom numbers have different μ, so their relative phase drifts during the hold.</p>
+        </div>
+        <div class="ctl">
+          <label for="ramp">Barrier ramp-down <span class="val" id="rampV"></span></label>
+          <input type="range" id="ramp" min="0" max="3" step="0.1" value="0">
+          <p class="hint">Only with the trap on. "Sudden" drops the barriers at once. A slow ramp lets the phases join smoothly.</p>
+        </div>
+        <div class="ctl">
+          <label for="tof">Evolution after release <span class="val" id="tofV"></span></label>
+          <input type="range" id="tof" min="0.5" max="5" step="0.1" value="2.4">
+          <p class="hint">In time of flight the cloud reaches the absorbing box edge after about 2.5–3/ω.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Atom detection</h2>
+        <div class="ctl">
+          <label for="natoms">Atoms to detect <span class="val" id="natomsV"></span></label>
+          <input type="range" id="natoms" min="0" max="100" step="1" value="62">
+        </div>
+        <button class="btn primary" id="detect">Detect atoms at current time</button>
+        <p class="hint">Each atom lands at a random position drawn from the density. With a few hundred atoms the fringes start to show, as in Javanainen and Yoo's simulated experiment.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Simulation grid</h2>
+        <div class="ctl">
+          <label for="grid">Grid points</label>
+          <select id="grid">
+            <option value="128">128 × 128 (fast, coarse)</option>
+            <option value="256" selected>256 × 256</option>
+            <option value="512">512 × 512 (slow)</option>
+          </select>
+          <p class="hint">Box 48 a<sub>ho</sub> wide with absorbing edges. Time step 0.004/ω.</p>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <section class="notes">
+    <div>
+      <h2>What is simulated</h2>
+      <p>The condensate wavefunction obeys the 2D Gross–Pitaevskii equation in a round harmonic trap. Lengths are in a<sub>ho</sub> = √(ħ/mω), times in 1/ω, energies in ħω. The ground state with the barriers switched on is found by imaginary-time evolution. Each disconnected part then gets the phase you set.</p>
+      <p>The barriers model the blue-detuned light sheet that Andrews et al. used to split their sodium cloud. After the hold, the trap and barriers switch off. Interaction energy drives the expansion, and where the parts overlap their phase difference shows as straight fringes.</p>
+    </div>
+    <div>
+      <h2>Temperature and density</h2>
+      <ul>
+        <li><em>Condensate fraction</em> is 1 − (T/T<sub>c</sub>)³, with k<sub>B</sub>T<sub>c</sub> = 25 ħω.</li>
+        <li><em>Thermal atoms</em> form a Gaussian cloud of width √(k<sub>B</sub>T/mω²) that expands ballistically. They do not interfere, so they wash out the contrast.</li>
+        <li><em>Phase noise</em> is a simple model of thermal phase fluctuations. It is not a full finite-temperature theory.</li>
+        <li><em>Density</em> sets g·N. A higher density gives a larger chemical potential μ, a larger cloud, a shorter healing length ξ and a faster expansion.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Where the phase comes from</h2>
+      <p>Two independently prepared condensates have no definite relative phase. Javanainen and Yoo, and Castin and Dalibard, showed that detecting atoms one at a time builds up a definite phase: fringes appear in every run, but at a random position each time. Use <em>Randomize</em> and <em>Detect atoms</em> to see this. The simulation is mean-field, so it gives each part a phase at the start. Repeated random phases give the same outcomes as the measurement picture.</p>
+      <p>For ²³Na in a 100 Hz trap, 1 a<sub>ho</sub> ≈ 2.1 µm and 1/ω ≈ 1.6 ms.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const TAU = Math.PI * 2;
+
+/* ---------- small helpers ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
+function gauss(r){let u=0;while(u===0)u=r();const v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(TAU*v);}
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function makeFFT(n){
+  const levels=Math.round(Math.log2(n));
+  const rev=new Uint32Array(n);
+  for(let i=0;i<n;i++){let r=0,x=i;for(let b=0;b<levels;b++){r=(r<<1)|(x&1);x>>=1;}rev[i]=r;}
+  const cosT=new Float64Array(n/2), sinT=new Float64Array(n/2);
+  for(let i=0;i<n/2;i++){cosT[i]=Math.cos(TAU*i/n);sinT[i]=Math.sin(TAU*i/n);}
+  function fft(re,im,off,stride,inv){
+    for(let i=0;i<n;i++){const j=rev[i];if(j>i){const a=off+i*stride,b=off+j*stride;let t=re[a];re[a]=re[b];re[b]=t;t=im[a];im[a]=im[b];im[b]=t;}}
+    const sg=inv?1:-1;
+    for(let size=2;size<=n;size<<=1){
+      const half=size>>1, step=n/size;
+      for(let i=0;i<n;i+=size){
+        for(let j=0;j<half;j++){
+          const k=j*step, wr=cosT[k], wi=sg*sinT[k];
+          const a=off+(i+j)*stride, b=a+half*stride;
+          const xr=re[b]*wr-im[b]*wi, xi=re[b]*wi+im[b]*wr;
+          re[b]=re[a]-xr; im[b]=im[a]-xi; re[a]+=xr; im[a]+=xi;
+        }
+      }
+    }
+  }
+  return function fft2(re,im,inv){
+    for(let r=0;r<n;r++) fft(re,im,r*n,1,inv);
+    for(let c=0;c<n;c++) fft(re,im,c,n,inv);
+    if(inv){const s=1/(n*n), NN=n*n;for(let i=0;i<NN;i++){re[i]*=s;im[i]*=s;}}
+  };
+}
+
+/* ---------- parameters and state ---------- */
+const P = { L:48, N:256, dt:0.004, TT:0.2, gN:1200, noise:1, bw:0.35, bh:3, hold:0, tof:2.4, mode:'tof', ramp:0, kTc:25, view:'density', axis:'y', tool:'draw' };
+const S = { phaseInit:'random', strokes:[], drawing:null, phases:[], regions:[], f0:1, g:0, mu:0, R0:0, xi:0, sigma0:0,
+            steps:0, holdSteps:0, endSteps:0, recEvery:5, running:false, paused:false, follow:true, replaying:false, prog:0 };
+let G=null, frames=[], head=0, job=null, dirty=true, atoms=null, frameSerial=0;
+const rng = mulberry32(20250107);
+
+function derive(){
+  S.f0 = Math.max(0, 1 - P.TT**3);
+  S.g = P.gN * Math.max(S.f0, 0.02);
+  S.mu = Math.sqrt(S.g/Math.PI);
+  S.R0 = Math.sqrt(2*S.mu);
+  S.xi = 1/Math.sqrt(2*S.mu);
+  S.sigma0 = Math.sqrt(Math.max(P.TT*P.kTc, 1e-6));
+}
+
+function buildGrid(){
+  const N=P.N, L=P.L, NN=N*N, dx=L/N;
+  const g={N,NN,dx,x:new Float64Array(N),k2:new Float64Array(NN),vext:new Float64Array(NN),zero:new Float64Array(NN),
+    vhold:new Float64Array(NN),vb:new Float64Array(NN),B:new Float64Array(NN),absorb:new Float64Array(NN),kinC:new Float64Array(NN),kinS:new Float64Array(NN),
+    re:new Float64Array(NN),im:new Float64Array(NN),psi0:new Float64Array(NN),label:new Int32Array(NN),noise:new Float64Array(NN),
+    fr:new Float64Array(NN),fi:new Float64Array(NN),tot:new Float32Array(NN),fft2:makeFFT(N)};
+  for(let i=0;i<N;i++) g.x[i]=(i-N/2)*dx;
+  const dk=TAU/L, margin=0.12*L, half=L/2;
+  for(let j=0;j<N;j++){
+    const ky=(j<N/2?j:j-N)*dk, y=g.x[j];
+    for(let i=0;i<N;i++){
+      const id=j*N+i, kx=(i<N/2?i:i-N)*dk, x=g.x[i];
+      const k2=kx*kx+ky*ky; g.k2[id]=k2;
+      g.vext[id]=0.5*(x*x+y*y);
+      const d=Math.min(half-Math.abs(x), half-Math.abs(y));
+      const s=clamp((margin-d)/margin,0,1); g.absorb[id]=1-0.08*s*s;
+      const ph=0.5*k2*P.dt; g.kinC[id]=Math.cos(ph); g.kinS[id]=Math.sin(ph);
+    }
+  }
+  return g;
+}
+
+function buildBarrier(){
+  const {N,dx,x,B,NN}=G; B.fill(0);
+  const w=P.bw, reach=3.5*w, reach2=reach*reach, inv=1/(2*w*w);
+  for(const st of S.strokes){
+    const p=st.pts;
+    for(let s=0;s<p.length-1;s++){
+      const ax=p[s][0], ay=p[s][1], bx=p[s+1][0], by=p[s+1][1];
+      const i0=Math.max(0,Math.floor((Math.min(ax,bx)-reach)/dx+N/2)), i1=Math.min(N-1,Math.ceil((Math.max(ax,bx)+reach)/dx+N/2));
+      const j0=Math.max(0,Math.floor((Math.min(ay,by)-reach)/dx+N/2)), j1=Math.min(N-1,Math.ceil((Math.max(ay,by)+reach)/dx+N/2));
+      const ex=bx-ax, ey=by-ay, ll=(ex*ex+ey*ey)||1e-12;
+      for(let j=j0;j<=j1;j++){
+        const py=x[j]-ay;
+        for(let i=i0;i<=i1;i++){
+          const px=x[i]-ax; const t=clamp((px*ex+py*ey)/ll,0,1);
+          const qx=px-t*ex, qy=py-t*ey, d2=qx*qx+qy*qy;
+          if(d2<reach2){const v=Math.exp(-d2*inv), id=j*N+i; if(v>B[id]) B[id]=v;}
+        }
+      }
+    }
+  }
+  const h=P.bh*S.mu;
+  for(let id=0;id<NN;id++){ G.vb[id]=h*B[id]; G.vhold[id]=G.vext[id]+G.vb[id]; }
+}
+
+function normalize(){
+  const {re,im,NN,dx}=G; let s=0;
+  for(let i=0;i<NN;i++) s+=re[i]*re[i]+im[i]*im[i];
+  const f=1/Math.sqrt(s*dx*dx||1);
+  for(let i=0;i<NN;i++){re[i]*=f;im[i]*=f;}
+}
+
+function* prepareJob(){
+  derive(); buildBarrier();
+  const {NN,re,im,vhold,k2,fft2}=G, g=S.g, mu=S.mu;
+  for(let id=0;id<NN;id++){const n=Math.max(mu-vhold[id],0)/g; re[id]=Math.sqrt(n); im[id]=0;}
+  normalize();
+  const h=0.005, ek=new Float64Array(NN);
+  for(let id=0;id<NN;id++) ek[id]=Math.exp(-0.5*k2[id]*h);
+  const iters=160;
+  for(let it=0;it<iters;it++){
+    for(let id=0;id<NN;id++){const n=re[id]*re[id]; re[id]*=Math.exp(-(vhold[id]+g*n)*h*0.5);}
+    fft2(re,im,false);
+    for(let id=0;id<NN;id++){re[id]*=ek[id]; im[id]*=ek[id];}
+    fft2(re,im,true);
+    for(let id=0;id<NN;id++){const v=re[id]; const n=v*v+im[id]*im[id]; re[id]=Math.sqrt(n)*Math.sign(v||1)*Math.exp(-(vhold[id]+g*n)*h*0.5); im[id]=0;}
+    normalize();
+    S.prog=(it+1)/iters;
+    yield;
+  }
+  for(let id=0;id<NN;id++) G.psi0[id]=Math.abs(re[id]);
+  labelRegions(); buildNoise(); renderRegions();
+  makeInitial(true);
+}
+
+function labelRegions(){
+  const {N,NN,psi0,B,label,x,dx}=G;
+  let mx=0; for(let i=0;i<NN;i++){const q=psi0[i]*psi0[i]; if(q>mx) mx=q;}
+  const thr=1e-4*mx; label.fill(-1);
+  const queue=new Int32Array(NN); const regs=[]; let total=0;
+  for(let i=0;i<NN;i++) total+=psi0[i]*psi0[i];
+  for(let s=0;s<NN;s++){
+    if(label[s]!==-1 || psi0[s]*psi0[s]<=thr || B[s]>=0.5) continue;
+    const id=regs.length; let qh=0, qt=0; queue[qt++]=s; label[s]=id;
+    let w=0, cx=0, cy=0;
+    while(qh<qt){
+      const c=queue[qh++]; const ci=c%N, cj=(c/N)|0; const q=psi0[c]*psi0[c];
+      w+=q; cx+=q*x[ci]; cy+=q*x[cj];
+      const nb=[ci>0?c-1:-1, ci<N-1?c+1:-1, cj>0?c-N:-1, cj<N-1?c+N:-1];
+      for(const n of nb){ if(n<0||label[n]!==-1) continue; if(psi0[n]*psi0[n]>thr && B[n]<0.5){label[n]=id; queue[qt++]=n;} }
+    }
+    regs.push({w:w/total, cx:cx/(w||1), cy:cy/(w||1)});
+  }
+  // drop tiny fragments, sort by atom fraction
+  const order=regs.map((r,i)=>i).filter(i=>regs[i].w>0.003).sort((a,b)=>regs[b].w-regs[a].w);
+  const remap=new Int32Array(regs.length).fill(-1); order.forEach((o,k)=>remap[o]=k);
+  for(let i=0;i<NN;i++) if(label[i]>=0) label[i]=remap[label[i]];
+  S.regions=order.map(o=>regs[o]);
+  // grow labels into barrier cells so the phase is defined there too
+  const grow=Math.ceil(3*P.bw/dx)+2;
+  for(let it=0;it<grow;it++){
+    const prev=label.slice();
+    for(let c=0;c<NN;c++){
+      if(prev[c]>=0) continue; const ci=c%N, cj=(c/N)|0;
+      if(ci>0&&prev[c-1]>=0) label[c]=prev[c-1];
+      else if(ci<N-1&&prev[c+1]>=0) label[c]=prev[c+1];
+      else if(cj>0&&prev[c-N]>=0) label[c]=prev[c-N];
+      else if(cj<N-1&&prev[c+N]>=0) label[c]=prev[c+N];
+    }
+  }
+  if(S.phases.length!==S.regions.length) S.phases=S.regions.map((_,k)=>(k===0||S.phaseInit==='zero')?0:rng()*TAU);
+}
+
+function buildNoise(){
+  const {NN,k2,fr,fi,fft2,noise,psi0}=G; const r=mulberry32(9137);
+  const kmin=1/S.R0, kmax=1/S.xi;
+  for(let id=0;id<NN;id++){const k=Math.sqrt(k2[id]); if(k>=kmin&&k<=kmax){const a=1/k; fr[id]=a*gauss(r); fi[id]=a*gauss(r);} else {fr[id]=0; fi[id]=0;}}
+  fft2(fr,fi,true);
+  let w=0,m=0; for(let id=0;id<NN;id++){const q=psi0[id]*psi0[id]; w+=q; m+=q*fr[id];} m/=(w||1);
+  let s=0; for(let id=0;id<NN;id++){const q=psi0[id]*psi0[id]; s+=q*(fr[id]-m)**2;}
+  const rms=Math.sqrt(s/(w||1))||1;
+  for(let id=0;id<NN;id++) noise[id]=(fr[id]-m)/rms;
+}
+
+function phaseNoiseAmp(){ return P.noise*P.TT*Math.sqrt(15/S.mu); }
+
+function makeInitial(force){
+  if(job && !force) return;
+  const {NN,re,im,psi0,label,noise}=G, sp=phaseNoiseAmp();
+  for(let id=0;id<NN;id++){const L=label[id]; const th=(L>=0?S.phases[L]:0)+sp*noise[id]; re[id]=psi0[id]*Math.cos(th); im[id]=psi0[id]*Math.sin(th);}
+  S.steps=0; S.holdSteps=Math.round(P.hold/P.dt); S.endSteps=S.holdSteps+Math.round(P.tof/P.dt);
+  S.recEvery=Math.max(1,Math.round((P.N>256?0.05:0.02)/P.dt));
+  frames=[]; head=0; atoms=null; record();
+  S.running=true; S.paused=false; S.follow=true; S.replaying=false; dirty=true;
+}
+
+/* ---------- time stepping ---------- */
+function halfPot(V,h,fac){
+  const {re,im,NN,vb}=G, g=S.g;
+  for(let i=0;i<NN;i++){
+    const r=re[i], m=im[i]; const th=-(V[i]+fac*vb[i]+g*(r*r+m*m))*h;
+    const c=Math.cos(th), s=Math.sin(th);
+    re[i]=r*c-m*s; im[i]=r*s+m*c;
+  }
+}
+function stepReal(){
+  let V=G.vext, fac=0;
+  if(S.steps<S.holdSteps) fac=1;
+  else if(P.mode==='tof') V=G.zero;
+  else { const tau=(S.steps-S.holdSteps)*P.dt; fac = P.ramp>0 ? Math.max(0,1-tau/P.ramp) : 0; }
+  const {re,im,NN,kinC,kinS,absorb,fft2}=G, h=P.dt*0.5;
+  halfPot(V,h,fac);
+  fft2(re,im,false);
+  for(let i=0;i<NN;i++){const c=kinC[i], s=kinS[i], r=re[i], m=im[i]; re[i]=r*c+m*s; im[i]=m*c-r*s;}
+  fft2(re,im,true);
+  halfPot(V,h,fac);
+  for(let i=0;i<NN;i++){const a=absorb[i]; if(a<1){re[i]*=a; im[i]*=a;}}
+  S.steps++;
+}
+
+function stageAt(steps){ return steps<=S.holdSteps ? 'trap' : P.mode; }
+function hwFor(stage,tau){
+  const sc = stage==='tof' ? Math.sqrt(1+tau*tau) : 1;
+  const Rc=S.R0*sc, Rth = S.f0<0.995 ? 2.2*S.sigma0*sc : 0;
+  return Math.min(P.L/2, Math.max(4, 1.3*Math.max(Rc,Rth)));
+}
+
+function record(){
+  const {N,NN,dx,x,re,im,tot,fr,fi,k2,fft2}=G;
+  const t=S.steps*P.dt, stage=stageAt(S.steps), tau=Math.max(0,(S.steps-S.holdSteps)*P.dt);
+  const sig = S.sigma0*(stage==='tof'?Math.sqrt(1+tau*tau):1), s2=sig*sig;
+  const f0=S.f0, th=1-f0, nth0=th/(TAU*s2), useTh=th>1e-5;
+  let mx=0, mc=0;
+  for(let j=0;j<N;j++){const y2=x[j]*x[j]; for(let i=0;i<N;i++){
+    const id=j*N+i; const nc=f0*(re[id]*re[id]+im[id]*im[id]);
+    const v=nc+(useTh?nth0*Math.exp(-(x[i]*x[i]+y2)/(2*s2)):0);
+    tot[id]=v; if(v>mx) mx=v; if(nc>mc) mc=nc;
+  }}
+  const dens=new Uint16Array(NN), ph=new Uint8Array(NN), cb=new Uint8Array(NN);
+  const profX=new Float32Array(N), profY=new Float32Array(N);
+  const im1=1/(mx||1), ic=1/(mc||1);
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){
+    const id=j*N+i, v=tot[id];
+    dens[id]=Math.round(v*im1*65535);
+    ph[id]=Math.floor((Math.atan2(im[id],re[id])+Math.PI)/TAU*255.999);
+    cb[id]=Math.round(Math.sqrt(f0*(re[id]*re[id]+im[id]*im[id])*ic)*255);
+    profX[i]+=v*dx; profY[j]+=v*dx;
+  }
+  // Fourier estimate of fringe contrast and period
+  for(let id=0;id<NN;id++){fr[id]=tot[id]; fi[id]=0;}
+  fft2(fr,fi,false);
+  const Rt=S.R0*(stage==='tof'?Math.sqrt(1+tau*tau):1), kc=8/Rt;
+  let pl=0, phh=0, pk=0, kpk=0;
+  for(let id=0;id<NN;id++){const p=fr[id]*fr[id]+fi[id]*fi[id], k=Math.sqrt(k2[id]); if(k<kc) pl+=p; else {phh+=p; if(p>pk){pk=p;kpk=k;}}}
+  const V=Math.min(1,Math.sqrt(2*phh/(pl||1)));
+  frames.push({id:++frameSerial, t, tau, stage, dens, ph, cb, profX, profY, V, lam:kpk>0?TAU/kpk:NaN, hw:hwFor(stage,tau)});
+}
+
+/* ---------- rendering ---------- */
+const LUT=new Uint8ClampedArray(256*3);
+(function(){
+  const stops=[[0,5,7,12],[0.18,30,22,70],[0.42,120,40,92],[0.66,224,112,38],[0.85,250,190,70],[1,255,248,214]];
+  for(let k=0;k<256;k++){const t=k/255; let a=0; while(a<stops.length-2&&t>stops[a+1][0]) a++;
+    const s0=stops[a], s1=stops[a+1], u=(t-s0[0])/(s1[0]-s0[0]);
+    for(let c=0;c<3;c++) LUT[k*3+c]=s0[c+1]+(s1[c+1]-s0[c+1])*u;}
+})();
+function hueRGB(phi){ return [0.5+0.5*Math.cos(phi), 0.5+0.5*Math.cos(phi-TAU/3), 0.5+0.5*Math.cos(phi-2*TAU/3)]; }
+const HUE=new Float32Array(256*3);
+for(let k=0;k<256;k++){const c=hueRGB((k/255)*TAU-Math.PI); HUE[k*3]=c[0];HUE[k*3+1]=c[1];HUE[k*3+2]=c[2];}
+function cssHue(phi){const c=hueRGB(phi);return `rgb(${c.map(v=>Math.round(v*255)).join(',')})`;}
+
+const off=document.createElement('canvas'); let offCtx=null, offImg=null, offKey='';
+function paintOff(f){
+  const N=P.N;
+  if(off.width!==N){off.width=off.height=N; offCtx=off.getContext('2d'); offImg=offCtx.createImageData(N,N); offKey='';}
+  const key=f.id+P.view; if(key===offKey) return; offKey=key;
+  const d=offImg.data, NN=N*N;
+  if(P.view==='phase'){
+    for(let i=0;i<NN;i++){const h=f.ph[i]*3, v=f.cb[i]; d[i*4]=HUE[h]*v; d[i*4+1]=HUE[h+1]*v; d[i*4+2]=HUE[h+2]*v; d[i*4+3]=255;}
+  } else {
+    for(let i=0;i<NN;i++){const k=(f.dens[i]>>8)*3; d[i*4]=LUT[k]; d[i*4+1]=LUT[k+1]; d[i*4+2]=LUT[k+2]; d[i*4+3]=255;}
+  }
+  offCtx.putImageData(offImg,0,0);
+}
+
+function fitCanvas(cv){const r=cv.getBoundingClientRect(), d=window.devicePixelRatio||1; const w=Math.max(1,Math.round(r.width*d)), h=Math.max(1,Math.round(r.height*d)); if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}}
+function tok(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function currentHW(){ const f=frames[head]; return f?f.hw:hwFor('trap',0); }
+
+function drawView(){
+  const cv=$('#view'), ctx=cv.getContext('2d'), W=cv.width, H=cv.height, dpr=window.devicePixelRatio||1;
+  ctx.fillStyle='#05070b'; ctx.fillRect(0,0,W,H);
+  const f=frames[head], hw=currentHW(), sc=W/(2*hw), toC=v=>(v/hw*0.5+0.5)*W;
+  if(f && P.view!=='atoms'){
+    paintOff(f); const half=hw/G.dx, N=P.N;
+    ctx.imageSmoothingEnabled=true; ctx.drawImage(off, N/2-half, N/2-half, 2*half, 2*half, 0, 0, W, H);
+  }
+  if(P.view==='atoms' && atoms){
+    const now=performance.now(); const shown = reduceMotion ? atoms.M : Math.min(atoms.M, Math.floor(atoms.M*(now-atoms.start)/1800));
+    atoms.shown=shown; if(shown<atoms.M) dirty=true;
+    const r=Math.max(1.1*dpr, W/480); ctx.fillStyle='rgba(255,214,150,0.9)';
+    for(let m=0;m<shown;m++){const px=toC(atoms.pts[2*m]), py=toC(atoms.pts[2*m+1]); ctx.beginPath(); ctx.arc(px,py,r,0,TAU); ctx.fill();}
+  }
+  // barriers and region labels while the barriers are on
+  if(!f || f.stage==='trap' || S.drawing){
+    ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
+    const all=S.strokes.concat(S.drawing?[S.drawing]:[]);
+    for(const st of all){
+      ctx.beginPath(); st.pts.forEach((p,i)=>i?ctx.lineTo(toC(p[0]),toC(p[1])):ctx.moveTo(toC(p[0]),toC(p[1])));
+      ctx.strokeStyle='rgba(110,200,255,0.22)'; ctx.lineWidth=Math.max(3*dpr,2.355*P.bw*sc); ctx.stroke();
+      ctx.strokeStyle='rgba(160,225,255,0.9)'; ctx.lineWidth=dpr; ctx.setLineDash([5*dpr,4*dpr]); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if(!S.drawing && !job && P.view!=='atoms' && S.regions.length>1){
+      ctx.font=`600 ${13*dpr}px "Barlow Semi Condensed", sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+      S.regions.forEach((r,k)=>{ if(k>=26) return; const px=toC(r.cx), py=toC(r.cy);
+        ctx.fillStyle='rgba(5,7,11,0.65)'; ctx.beginPath(); ctx.arc(px,py,9*dpr,0,TAU); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.fillText(LETTERS[k],px,py+0.5*dpr); });
+    }
+    ctx.restore();
+  }
+  if(f && $('#vort').checked && P.view!=='atoms'){
+    const vs=findVortices(f), r=Math.max(5*dpr, 0.25*sc);
+    ctx.save(); ctx.lineWidth=1.6*dpr;
+    for(const v of vs){ const px=toC(v[0]), py=toC(v[1]); ctx.beginPath(); ctx.arc(px,py,r,0,TAU);
+      ctx.strokeStyle = v[2]>0 ? '#ffffff' : '#7fd8ff'; ctx.stroke(); }
+    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font=`${11*dpr}px "IBM Plex Mono", monospace`; ctx.textAlign='left'; ctx.textBaseline='top';
+    const np=vs.filter(v=>v[2]>0).length; ctx.fillText(`vortices +${np} / −${vs.length-np}`, 12*dpr, 12*dpr);
+    ctx.restore();
+  }
+  // scale bar
+  const nice=[0.5,1,2,5,10,20]; let len=nice[0]; for(const n of nice) if(n<=hw*0.35) len=n;
+  const bx=14*dpr, by=H-16*dpr, bl=len*sc;
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fillRect(bx,by,bl,2*dpr);
+  ctx.font=`${11*dpr}px "IBM Plex Mono", monospace`; ctx.textAlign='left'; ctx.textBaseline='bottom';
+  ctx.fillText(`${len} a_ho`, bx, by-4*dpr);
+  if(P.view==='atoms'){
+    ctx.textAlign='right'; ctx.textBaseline='top';
+    ctx.fillText(atoms?`${atoms.shown??0} atoms · detected at t = ${atoms.t.toFixed(2)}`:'Press "Detect atoms"', W-12*dpr, 12*dpr);
+  }
+}
+
+function findVortices(f){
+  if(f._vort) return f._vort;
+  const N=P.N, dx=G.dx, ph=f.ph, cb=f.cb, out=[], o=3;
+  const wr=d=>((d+128+512)%256)-128;
+  for(let j=o;j<N-1-o;j++) for(let i=o;i<N-1-o;i++){
+    const id=j*N+i;
+    if(Math.min(cb[id-o], cb[id+1+o], cb[id-o*N], cb[id+(1+o)*N])<30) continue;
+    const a=ph[id], b=ph[id+1], c=ph[id+N+1], d=ph[id+N];
+    const s=wr(b-a)+wr(c-b)+wr(d-c)+wr(a-d);
+    if(s>128) out.push([(i+1-N/2)*dx,(j+1-N/2)*dx,1]); else if(s<-128) out.push([(i+1-N/2)*dx,(j+1-N/2)*dx,-1]);
+  }
+  f._vort=out; return out;
+}
+
+function plotAxes(ctx,W,H,pad,xmin,xmax,xlab,colors,dpr,ticks){
+  ctx.strokeStyle=colors.line; ctx.lineWidth=dpr; ctx.fillStyle=colors.muted;
+  ctx.font=`${10.5*dpr}px "IBM Plex Mono", monospace`; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b+0.5); ctx.lineTo(W-pad.r,H-pad.b+0.5); ctx.stroke();
+  for(const v of ticks){const px=pad.l+(v-xmin)/(xmax-xmin)*(W-pad.l-pad.r); ctx.beginPath(); ctx.moveTo(px,H-pad.b); ctx.lineTo(px,H-pad.b+4*dpr); ctx.stroke(); ctx.fillText(+v.toFixed(2)+'',px,H-pad.b+6*dpr);}
+  ctx.textAlign='right'; ctx.fillText(xlab, W-pad.r, H-pad.b+6*dpr+13*dpr);
+}
+function niceTicks(a,b,n){const span=b-a, raw=span/n, mag=10**Math.floor(Math.log10(raw)); const st=[1,2,2.5,5,10].map(s=>s*mag).find(s=>s>=raw)||raw; const out=[]; for(let v=Math.ceil(a/st)*st; v<=b+1e-9; v+=st) out.push(Math.abs(v)<1e-9?0:v); return out;}
+
+function drawProfile(colors){
+  const cv=$('#prof'), ctx=cv.getContext('2d'), W=cv.width, H=cv.height, dpr=window.devicePixelRatio||1;
+  ctx.clearRect(0,0,W,H); const f=frames[head]; if(!f) return;
+  const prof=P.axis==='y'?f.profX:f.profY, N=P.N, dx=G.dx, hw=f.hw;
+  const i0=Math.max(0,Math.floor(N/2-hw/dx)), i1=Math.min(N-1,Math.ceil(N/2+hw/dx));
+  let mx=0; for(let i=i0;i<=i1;i++) if(prof[i]>mx) mx=prof[i]; mx=mx*1.08||1;
+  const pad={l:8*dpr,r:8*dpr,t:8*dpr,b:34*dpr}, pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const X=xv=>pad.l+(xv+hw)/(2*hw)*pw, Y=v=>pad.t+ph-(v/mx)*ph;
+  ctx.beginPath(); ctx.moveTo(X((i0-N/2)*dx),Y(0));
+  for(let i=i0;i<=i1;i++) ctx.lineTo(X((i-N/2)*dx),Y(prof[i]));
+  ctx.lineTo(X((i1-N/2)*dx),Y(0)); ctx.closePath(); ctx.fillStyle=colors.soft; ctx.fill();
+  ctx.beginPath(); for(let i=i0;i<=i1;i++){const px=X((i-N/2)*dx), py=Y(prof[i]); i===i0?ctx.moveTo(px,py):ctx.lineTo(px,py);} ctx.strokeStyle=colors.accent; ctx.lineWidth=1.5*dpr; ctx.stroke();
+  plotAxes(ctx,W,H,pad,-hw,hw,P.axis==='y'?'x / a_ho':'y / a_ho',colors,dpr,niceTicks(-hw,hw,5));
+}
+
+function drawVis(colors){
+  const cv=$('#vis'), ctx=cv.getContext('2d'), W=cv.width, H=cv.height, dpr=window.devicePixelRatio||1;
+  ctx.clearRect(0,0,W,H);
+  const tEnd=Math.max(S.endSteps*P.dt,0.1), tHold=S.holdSteps*P.dt;
+  const pad={l:30*dpr,r:8*dpr,t:8*dpr,b:34*dpr}, pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const X=t=>pad.l+t/tEnd*pw, Y=v=>pad.t+ph-v*ph;
+  if(tHold>0){ctx.fillStyle=colors.chip; ctx.fillRect(X(0),pad.t,X(tHold)-X(0),ph); ctx.fillStyle=colors.muted; ctx.font=`${10*dpr}px "IBM Plex Mono", monospace`; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText('hold',X(0)+4*dpr,pad.t+3*dpr);}
+  ctx.strokeStyle=colors.line; ctx.lineWidth=dpr; ctx.fillStyle=colors.muted; ctx.font=`${10.5*dpr}px "IBM Plex Mono", monospace`; ctx.textAlign='right'; ctx.textBaseline='middle';
+  for(const v of [0,0.5,1]){ctx.beginPath(); ctx.moveTo(pad.l,Y(v)+0.5); ctx.lineTo(W-pad.r,Y(v)+0.5); ctx.stroke(); ctx.fillText(v.toFixed(1),pad.l-5*dpr,Y(v));}
+  if(frames.length){
+    ctx.beginPath(); frames.forEach((f,i)=>{const px=X(f.t), py=Y(f.V); i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
+    ctx.strokeStyle=colors.accent; ctx.lineWidth=1.6*dpr; ctx.stroke();
+    const f=frames[head]; const cx=X(f.t);
+    ctx.strokeStyle=colors.ink; ctx.lineWidth=dpr; ctx.setLineDash([3*dpr,3*dpr]); ctx.beginPath(); ctx.moveTo(cx,pad.t); ctx.lineTo(cx,H-pad.b); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=colors.accent; ctx.beginPath(); ctx.arc(cx,Y(f.V),3.5*dpr,0,TAU); ctx.fill();
+  }
+  plotAxes(ctx,W,H,pad,0,tEnd,'t / (1/ω)',colors,dpr,niceTicks(0,tEnd,5));
+}
+
+const fmt=(v,d=2)=>Number.isFinite(v)?v.toFixed(d):'–';
+function updateReadouts(){
+  const f=frames[head];
+  $('#roFrac').textContent=`${(S.f0*100).toFixed(1)} %`;
+  $('#roParts').textContent=S.regions.length;
+  $('#roV').textContent=f?fmt(f.V):'–';
+  $('#roLam').textContent=(f&&f.V>0.12&&f.stage!=='trap')?`${fmt(f.lam)} a_ho`:'–';
+  let pred='–';
+  if(f&&f.stage==='tof'&&f.tau>0.2&&S.regions.length>=2){const a=S.regions[0], b=S.regions[1]; const d=Math.hypot(a.cx-b.cx,a.cy-b.cy); if(d>0) pred=`${fmt(TAU*f.tau/d)} a_ho (A–B)`;}
+  $('#roLamP').textContent=pred;
+  $('#clock').textContent=f?`t = ${f.t.toFixed(2)}`:'t = –';
+  const chip=$('#stageChip');
+  chip.textContent = job ? 'Preparing' : !f ? '–' : f.stage==='trap' ? 'In trap, barriers on' : f.stage==='tof' ? 'Time of flight' : 'Merging in trap';
+  chip.classList.toggle('busy', !!job);
+  const sc=$('#scrub'); sc.max=Math.max(0,frames.length-1); sc.value=head;
+  $('#play').textContent = (S.replaying || (S.running&&!S.paused)) ? 'Pause' : 'Play';
+  const st=$('#status');
+  if(job){st.hidden=false; st.textContent=`Finding ground state… ${Math.round(S.prog*100)} %`;}
+  else st.hidden=true;
+}
+
+function renderAll(){
+  fitCanvas($('#view')); fitCanvas($('#prof')); fitCanvas($('#vis'));
+  const colors={accent:tok('--accent'), soft:tok('--accent-soft'), line:tok('--line'), muted:tok('--muted'), ink:tok('--ink'), chip:tok('--chip')};
+  drawView(); drawProfile(colors); drawVis(colors); updateReadouts();
+}
+
+/* ---------- main loop ---------- */
+function loop(){
+  const t0=performance.now();
+  if(job){
+    while(performance.now()-t0<14){ const r=job.next(); if(r.done){job=null; break;} }
+    dirty=true;
+  } else if(S.running && !S.paused){
+    while(performance.now()-t0<14){
+      stepReal();
+      if(S.steps%S.recEvery===0 || S.steps===S.holdSteps || S.steps>=S.endSteps) record();
+      if(S.steps>=S.endSteps){S.running=false; break;}
+    }
+    if(S.follow) head=frames.length-1;
+    dirty=true;
+  }
+  if(S.replaying){
+    head++; if(head>=frames.length-1){head=frames.length-1; if(!S.running) S.replaying=false;}
+    dirty=true;
+  }
+  if(dirty){dirty=false; renderAll();}
+  requestAnimationFrame(loop);
+}
+
+/* ---------- actions ---------- */
+function startPrepare(){ derive(); job=prepareJob(); S.running=false; S.replaying=false; atoms=null; updateLabels(); dirty=true; }
+let initTimer=0;
+function scheduleInitial(){ clearTimeout(initTimer); initTimer=setTimeout(()=>{ if(!job) makeInitial(); },90); }
+
+function preset(name){
+  derive(); const R=S.R0*1.5+1.5, a=S.R0, pts=[];
+  const line=(x1,y1,x2,y2)=>({pts:[[x1,y1],[x2,y2]]});
+  if(name==='split') pts.push(line(0,-R,0,R));
+  if(name==='slices'){const s=a*0.36; pts.push(line(-s,-R,-s,R), line(s,-R,s,R));}
+  if(name==='quad') pts.push(line(0,-R,0,R), line(-R,0,R,0));
+  if(name==='tri'){ for(const ang of [-Math.PI/2, Math.PI/6, 5*Math.PI/6]) pts.push(line(0,0,R*Math.cos(ang),R*Math.sin(ang))); }
+  if(name==='offset'){ const s=a*0.3; pts.push(line(s,-R,s,R)); }
+  if(name==='ring'){const r=a*0.55, c=[]; for(let k=0;k<=120;k++){const t=k/120*TAU; c.push([r*Math.cos(t), r*Math.sin(t)]);} pts.push({pts:c});}
+  S.strokes=pts; S.phases=[]; markPreset(name); startPrepare();
+}
+function markPreset(name){ document.querySelectorAll('[data-preset]').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.preset===name))); }
+
+function renderRegions(){
+  const box=$('#regions'); box.innerHTML='';
+  const n=S.regions.length;
+  $('#nparts').textContent = n===0 ? 'No condensate' : n===1 ? '1 connected part' : `${n} separate parts`;
+  if(n<=1){ const p=document.createElement('p'); p.className='empty'; p.textContent=n===1?'The cloud is one piece, so it has one phase. Draw a barrier all the way across to split it.':'Lower the temperature to get a condensate.'; box.appendChild(p); return; }
+  S.regions.forEach((r,k)=>{
+    const row=document.createElement('div'); row.className='region';
+    const sw=document.createElement('span'); sw.className='sw'; sw.style.background=cssHue(S.phases[k]);
+    const nm=document.createElement('span'); nm.className='nm'; nm.innerHTML=`Part ${LETTERS[k]??k}<small>${(r.w*100).toFixed(0)} %</small>`;
+    const inp=document.createElement('input'); inp.type='range'; inp.min=0; inp.max=360; inp.step=1; inp.id='ph'+k;
+    const deg=Math.round(((S.phases[k]%TAU)+TAU)%TAU*180/Math.PI); inp.value=deg; inp.setAttribute('aria-label',`Phase of part ${LETTERS[k]}`);
+    const out=document.createElement('output'); out.textContent=deg+'°';
+    inp.addEventListener('input',()=>{ S.phases[k]=inp.value*Math.PI/180; out.textContent=inp.value+'°'; sw.style.background=cssHue(S.phases[k]); scheduleInitial(); });
+    row.append(sw,nm,inp,out); box.appendChild(row);
+  });
+}
+
+function detect(){
+  const f=frames[head]; if(!f) return;
+  const M=natomsVal(), N=P.N, NN=N*N, dx=G.dx;
+  const cdf=new Float64Array(NN); let s=0; for(let i=0;i<NN;i++){s+=f.dens[i]; cdf[i]=s;}
+  const pts=new Float32Array(2*M);
+  for(let m=0;m<M;m++){
+    const u=Math.random()*s; let lo=0, hi=NN-1; while(lo<hi){const mid=(lo+hi)>>1; if(cdf[mid]<u) lo=mid+1; else hi=mid;}
+    pts[2*m]=(lo%N-N/2+Math.random())*dx; pts[2*m+1]=(((lo/N)|0)-N/2+Math.random())*dx;
+  }
+  atoms={pts,M,t:f.t,start:performance.now(),shown:0};
+  setView('atoms');
+}
+function natomsVal(){ return Math.round(10*Math.pow(500, +$('#natoms').value/100)); }
+
+function setView(v){ P.view=v; offKey=''; document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v))); if(v==='atoms'&&!atoms&&frames.length) { detect(); return; } dirty=true; }
+
+function gNfromSlider(v){ return 100*Math.pow(30, v/1000); }
+function updateLabels(){
+  derive();
+  $('#tempV').textContent=`T/Tc = ${P.TT.toFixed(2)}`;
+  $('#tempH').textContent = P.TT>0 ? `Condensate ${(S.f0*100).toFixed(1)} % · thermal cloud width ${S.sigma0.toFixed(1)} a_ho` : 'Pure condensate, no thermal atoms';
+  $('#densV').textContent=`g·N = ${Math.round(P.gN)}`;
+  $('#densH').textContent=`μ = ${S.mu.toFixed(1)} ħω · radius ${S.R0.toFixed(1)} a_ho · healing length ξ = ${S.xi.toFixed(2)} a_ho`;
+  $('#noiseV').textContent=`×${P.noise.toFixed(1)} → ${phaseNoiseAmp().toFixed(2)} rad`;
+  $('#bwV').textContent=`${P.bw.toFixed(2)} a_ho`;
+  $('#bhV').textContent=`${P.bh.toFixed(1)} μ`;
+  $('#holdV').textContent=`${P.hold.toFixed(2)} /ω`;
+  $('#rampV').textContent=P.ramp>0?`${P.ramp.toFixed(1)} /ω`:'sudden';
+  $('#tofV').textContent=`${P.tof.toFixed(1)} /ω`;
+  $('#natomsV').textContent=natomsVal();
+}
+
+/* ---------- wiring ---------- */
+function bindRange(id, apply, heavy){
+  const el=$('#'+id);
+  el.addEventListener('input',()=>{ apply(+el.value); updateLabels(); if(!heavy) scheduleInitial(); });
+  if(heavy) el.addEventListener('change',()=>startPrepare());
+}
+bindRange('temp', v=>P.TT=v, true);
+bindRange('dens', v=>P.gN=gNfromSlider(v), true);
+bindRange('bw', v=>P.bw=v, true);
+bindRange('bh', v=>P.bh=v, true);
+bindRange('noise', v=>P.noise=v, false);
+bindRange('hold', v=>P.hold=v, false);
+bindRange('tof', v=>P.tof=v, false);
+bindRange('ramp', v=>P.ramp=v, false);
+$('#natoms').addEventListener('input',updateLabels);
+$('#grid').addEventListener('change',e=>{ P.N=+e.target.value; G=buildGrid(); frames=[]; head=0; offKey=''; startPrepare(); });
+$('#axis').addEventListener('change',e=>{ P.axis=e.target.value; dirty=true; });
+document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{ S.phaseInit='random'; markExp(''); preset(b.dataset.preset); }));
+$('#vort').addEventListener('change',()=>{dirty=true;});
+
+const EXP={
+  andrews:{cfg:{TT:0.05,gN:1200,bw:0.35,bh:3,hold:0,tof:2.4,mode:'tof',ramp:0,noise:1,preset:'split',phaseInit:'random',view:'density',vort:false},
+    text:'Andrews et al. (1997) cut a sodium condensate in two with a light sheet, switched off the trap and saw straight fringes. Before the run ends, predict the fringe period from λ = h·t/(m·d), where d is the distance between the centres of parts A and B. Then read the spacing between neighbouring maxima off the profile plot and compare it with the ballistic estimate in the readout. The parts start touching and repel each other as they expand. How does that change the result? Try a longer evolution time.'},
+  random:{cfg:{TT:0.05,gN:1200,bw:0.35,bh:3,hold:0,tof:2.4,mode:'tof',ramp:0,noise:1,preset:'split',phaseInit:'random',view:'density',vort:false},
+    text:'When the run ends, press Detect atoms with about 300 atoms. Then press Randomize and detect again. Repeat a few times. Fringes appear every time, but they shift from run to run. Javanainen and Yoo (1996) and Castin and Dalibard (1997) showed this: two condensates have no definite relative phase, and detecting atoms fixes one at random.'},
+  heat:{cfg:{TT:0.7,gN:1200,bw:0.35,bh:3,hold:0,tof:2.4,mode:'tof',ramp:0,noise:1.5,preset:'split',phaseInit:'random',view:'density',vort:false},
+    text:'Predict how the final contrast changes with temperature. Then set T/Tc to 0, 0.3, 0.5, 0.7 and 0.9 and note the contrast at the end of each run. The thermal atoms do not interfere and add a smooth background, and phase noise bends the fringes.'},
+  drift:{cfg:{TT:0.05,gN:1200,bw:0.35,bh:3,hold:1.5,tof:2.0,mode:'tof',ramp:0,noise:1,preset:'offset',phaseInit:'zero',view:'phase',vort:false},
+    text:'The barrier sits off centre, so part A holds more atoms than part B and has a higher chemical potential μ. Both parts start with the same phase. Watch their colours in the Phase view separate during the hold: the relative phase grows as Δμ·t/ħ. Change the hold time and see the fringes after release shift.'},
+  merge:{cfg:{TT:0.05,gN:1500,bw:0.35,bh:3,hold:0,tof:4,mode:'merge',ramp:1.5,noise:1,preset:'tri',phaseInit:'random',view:'phase',vort:true},
+    text:'Three parts with random phases merge inside the trap while the barriers ramp down over 1.5/ω. If the phases wind by a full 2π around the centre, one vortex is left behind. Before you run it, predict how often that happens for random phases. Then press Randomize several times and count. Scherer et al. (2007) saw vortices form this way. Next, set the ramp to sudden: the abrupt merge leaves many vortex pairs.'}
+};
+function markExp(k){ document.querySelectorAll('[data-exp]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.exp===k))); }
+function applyExp(key){
+  const e=EXP[key], c=e.cfg;
+  Object.assign(P,{TT:c.TT,gN:c.gN,bw:c.bw,bh:c.bh,hold:c.hold,tof:c.tof,mode:c.mode,ramp:c.ramp,noise:c.noise});
+  $('#temp').value=c.TT; $('#dens').value=Math.round(1000*Math.log(c.gN/100)/Math.log(30));
+  $('#bw').value=c.bw; $('#bh').value=c.bh; $('#hold').value=c.hold; $('#tof').value=c.tof; $('#ramp').value=c.ramp; $('#noise').value=c.noise;
+  document.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.mode===c.mode)));
+  $('#vort').checked=c.vort; S.phaseInit=c.phaseInit;
+  markExp(key); $('#expText').textContent=e.text;
+  setView(c.view); preset(c.preset);
+}
+document.querySelectorAll('[data-exp]').forEach(b=>b.addEventListener('click',()=>applyExp(b.dataset.exp)));
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.view==='atoms') { if(!atoms) detect(); else setView('atoms'); } else setView(b.dataset.view); }));
+document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{ P.mode=b.dataset.mode; document.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); scheduleInitial(); }));
+$('#randPh').addEventListener('click',()=>{ S.phases=S.phases.map((_,k)=>k===0?0:Math.random()*TAU); renderRegions(); makeInitial(); });
+$('#zeroPh').addEventListener('click',()=>{ S.phases=S.phases.map(()=>0); renderRegions(); makeInitial(); });
+$('#detect').addEventListener('click',detect);
+$('#restart').addEventListener('click',()=>{ if(!job) makeInitial(); });
+$('#play').addEventListener('click',()=>{
+  if(S.replaying){ S.replaying=false; }
+  else if(S.running && !S.paused){ S.paused=true; }
+  else if(S.running && S.paused){ S.paused=false; S.follow=true; }
+  else if(frames.length){ if(head>=frames.length-1) head=0; S.replaying=true; }
+  dirty=true;
+});
+$('#scrub').addEventListener('input',e=>{ head=+e.target.value; S.follow=false; S.replaying=false; dirty=true; });
+
+function setTool(t){ P.tool=t; $('#toolDraw').setAttribute('aria-pressed',String(t==='draw')); $('#toolErase').setAttribute('aria-pressed',String(t==='erase'));
+  $('#view').style.cursor = t==='draw'?'crosshair':'pointer';
+  $('#toolHint').textContent = t==='draw' ? 'Drag across the cloud to place a barrier. Draw it all the way through the cloud to cut off a separate part. Drawing returns the run to t = 0.' : 'Click a barrier to remove it.'; }
+$('#toolDraw').addEventListener('click',()=>setTool('draw'));
+$('#toolErase').addEventListener('click',()=>setTool('erase'));
+
+const cv=$('#view');
+function toPhys(e){ const r=cv.getBoundingClientRect(), hw=currentHW(); return [((e.clientX-r.left)/r.width*2-1)*hw, ((e.clientY-r.top)/r.height*2-1)*hw]; }
+function goToStart(){ if(frames.length){ head=0; S.follow=false; S.replaying=false; S.paused=true; } if(P.view==='atoms') setView('density'); }
+function segDist(p,a,b){const ex=b[0]-a[0], ey=b[1]-a[1], ll=ex*ex+ey*ey||1e-12; const t=clamp(((p[0]-a[0])*ex+(p[1]-a[1])*ey)/ll,0,1); return Math.hypot(p[0]-a[0]-t*ex, p[1]-a[1]-t*ey);}
+cv.addEventListener('pointerdown',e=>{
+  e.preventDefault(); goToStart(); const p=toPhys(e);
+  if(P.tool==='draw'){ S.drawing={pts:[p]}; cv.setPointerCapture(e.pointerId); }
+  else {
+    let best=-1, bd=Math.max(0.6, currentHW()*0.06);
+    S.strokes.forEach((st,k)=>{ for(let s=0;s<st.pts.length-1;s++){const d=segDist(p,st.pts[s],st.pts[s+1]); if(d<bd){bd=d; best=k;}} });
+    if(best>=0){ S.strokes.splice(best,1); S.phases=[]; markPreset(''); startPrepare(); }
+  }
+  dirty=true;
+});
+cv.addEventListener('pointermove',e=>{
+  if(!S.drawing) return; const p=toPhys(e), last=S.drawing.pts[S.drawing.pts.length-1];
+  if(Math.hypot(p[0]-last[0],p[1]-last[1])>currentHW()*0.012){ S.drawing.pts.push(p); dirty=true; }
+});
+function endStroke(){ if(!S.drawing) return; if(S.drawing.pts.length>=2){ S.strokes.push(S.drawing); S.phases=[]; markPreset(''); S.drawing=null; startPrepare(); } else { S.drawing=null; dirty=true; } }
+cv.addEventListener('pointerup',endStroke);
+cv.addEventListener('pointercancel',endStroke);
+
+new ResizeObserver(()=>{dirty=true;}).observe($('#screen'));
+new ResizeObserver(()=>{dirty=true;}).observe(document.querySelector('.plots'));
+if(window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{dirty=true;});
+new MutationObserver(()=>{dirty=true;}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+/* ---------- boot ---------- */
+G=buildGrid(); setTool('draw'); updateLabels(); preset('split');
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
