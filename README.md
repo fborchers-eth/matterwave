@@ -2,7 +2,7 @@
 
 An interactive browser simulator of matter-wave interference between Bose–Einstein condensates, made for teaching.
 
-**Open it:** https://&lt;user&gt;.github.io/matterwave/
+**Open it:** https://fborchers-eth.github.io/matterwave/
 
 You can cut a trapped 2D condensate with light-sheet barriers and give each part its own phase. Then you choose a temperature and density, release the cloud or merge the parts in the trap, and watch the fringes form. Guided experiments follow:
 
