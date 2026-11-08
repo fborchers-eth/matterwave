@@ -622,6 +622,9 @@ function drawView(){
     ctx.imageSmoothingEnabled=true; ctx.drawImage(off, N/2-half, N/2-half, 2*half, 2*half, 0, 0, W, H);
   }
   if(P.view==='atoms' && atoms){
+    // The shown frame changed (scrubbing, or the run still advancing): re-sample from it,
+    // so the atoms always belong to the time on the clock and to the current field of view.
+    if(f && atoms.fid!==f.id){ atoms.pts=sampleAtoms(f,atoms.u); atoms.t=f.t; atoms.fid=f.id; atoms.start=-Infinity; }
     const now=performance.now(); const shown = reduceMotion ? atoms.M : Math.min(atoms.M, Math.floor(atoms.M*(now-atoms.start)/1800));
     atoms.shown=shown; if(shown<atoms.M) dirty=true;
     const r=Math.max(1.1*dpr, W/480); ctx.fillStyle='rgba(255,214,150,0.9)';
@@ -807,16 +810,25 @@ function renderRegions(){
   });
 }
 
-function detect(){
-  const f=frames[head]; if(!f) return;
-  const M=natomsVal(), N=P.N, NN=N*N, dx=G.dx;
+// Map a fixed set of uniform random numbers onto a frame's density.
+// Re-using the same numbers when the displayed frame changes keeps the
+// pattern stable instead of flickering, while the positions always follow
+// the density at the time that is actually shown.
+function sampleAtoms(f,u){
+  const M=u.length/3, N=P.N, NN=N*N, dx=G.dx;
   const cdf=new Float64Array(NN); let s=0; for(let i=0;i<NN;i++){s+=f.dens[i]; cdf[i]=s;}
   const pts=new Float32Array(2*M);
   for(let m=0;m<M;m++){
-    const u=Math.random()*s; let lo=0, hi=NN-1; while(lo<hi){const mid=(lo+hi)>>1; if(cdf[mid]<u) lo=mid+1; else hi=mid;}
-    pts[2*m]=(lo%N-N/2+Math.random())*dx; pts[2*m+1]=(((lo/N)|0)-N/2+Math.random())*dx;
+    const v=u[3*m]*s; let lo=0, hi=NN-1; while(lo<hi){const mid=(lo+hi)>>1; if(cdf[mid]<v) lo=mid+1; else hi=mid;}
+    pts[2*m]=(lo%N-N/2+u[3*m+1])*dx; pts[2*m+1]=(((lo/N)|0)-N/2+u[3*m+2])*dx;
   }
-  atoms={pts,M,t:f.t,start:performance.now(),shown:0};
+  return pts;
+}
+function detect(){
+  const f=frames[head]; if(!f) return;
+  const M=natomsVal(), u=new Float64Array(3*M);
+  for(let i=0;i<u.length;i++) u[i]=Math.random();
+  atoms={u,pts:sampleAtoms(f,u),M,t:f.t,fid:f.id,start:performance.now(),shown:0};
   setView('atoms');
 }
 function natomsVal(){ return Math.round(10*Math.pow(500, +$('#natoms').value/100)); }
