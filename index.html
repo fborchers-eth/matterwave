@@ -157,6 +157,7 @@ input[type=range]{width:100%; accent-color:var(--accent)}
             <button data-view="atoms" aria-pressed="false">Atoms</button>
           </div>
           <label class="check"><input type="checkbox" id="vort"> Mark vortices</label>
+          <label class="check" title="Show the whole box (±24 a_ho) at every time, so the cloud and its fringes visibly grow. Off: zoom to the cloud in every frame."><input type="checkbox" id="fixedScale" checked> Fixed scale</label>
         </div>
       </div>
       <p class="hint" id="toolHint">Drag across the cloud to place a barrier. Draw it all the way through the cloud to cut off a separate part. Drawing returns the run to t = 0.</p>
@@ -671,7 +672,10 @@ function paintOff(f){
 
 function fitCanvas(cv){const r=cv.getBoundingClientRect(), d=window.devicePixelRatio||1; const w=Math.max(1,Math.round(r.width*d)), h=Math.max(1,Math.round(r.height*d)); if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}}
 function tok(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
-function currentHW(){ const f=frames[head]; return f?f.hw:hwFor('trap',0); }
+// View half-width. Fixed scale: the whole box for every frame and run, so expansion and fringe growth
+// are visible. Otherwise zoom to the cloud of that frame (frame.hw).
+function viewHW(f){ return $('#fixedScale').checked ? P.L/2 : f ? f.hw : hwFor('trap',0); }
+function currentHW(){ return viewHW(frames[head]); }
 
 function drawView(){
   const cv=$('#view'), ctx=cv.getContext('2d'), W=cv.width, H=cv.height, dpr=window.devicePixelRatio||1;
@@ -755,7 +759,7 @@ function niceTicks(a,b,n){const span=b-a, raw=span/n, mag=10**Math.floor(Math.lo
 function drawProfile(colors){
   const cv=$('#prof'), ctx=cv.getContext('2d'), W=cv.width, H=cv.height, dpr=window.devicePixelRatio||1;
   ctx.clearRect(0,0,W,H); const f=frames[head]; if(!f) return;
-  const prof=P.axis==='y'?f.profX:f.profY, N=P.N, dx=G.dx, hw=f.hw;
+  const prof=P.axis==='y'?f.profX:f.profY, N=P.N, dx=G.dx, hw=viewHW(f);
   const i0=Math.max(0,Math.floor(N/2-hw/dx)), i1=Math.min(N-1,Math.ceil(N/2+hw/dx));
   let mx=0; for(let i=i0;i<=i1;i++) if(prof[i]>mx) mx=prof[i]; mx=mx*1.08||1;
   const pad={l:8*dpr,r:8*dpr,t:8*dpr,b:34*dpr}, pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
@@ -943,6 +947,7 @@ $('#grid').addEventListener('change',e=>{ P.N=+e.target.value; G=buildGrid(); fr
 $('#axis').addEventListener('change',e=>{ P.axis=e.target.value; dirty=true; });
 document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{ S.phaseInit='random'; markExp(''); preset(b.dataset.preset); }));
 $('#vort').addEventListener('change',()=>{dirty=true;});
+$('#fixedScale').addEventListener('change',()=>{dirty=true;});
 
 const EXP={
   andrews:{cfg:{TT:0.05,gN:1200,bw:1.2,bh:6,hold:0,tof:3.0,mode:'tof',ramp:0,noise:1,preset:'split',phaseInit:'random',view:'density',vort:false},
