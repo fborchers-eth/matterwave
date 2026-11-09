@@ -219,7 +219,7 @@ input[type=range]{width:100%; accent-color:var(--accent)}
         <h2>Cloud</h2>
         <div class="ctl">
           <label for="temp">Temperature <span class="val" id="tempV"></span></label>
-          <input type="range" id="temp" min="0" max="0.95" step="0.01" value="0.2">
+          <input type="range" id="temp" min="0" max="1.2" step="0.01" value="0.2">
           <p class="hint" id="tempH"></p>
         </div>
         <div class="ctl">
@@ -243,7 +243,7 @@ input[type=range]{width:100%; accent-color:var(--accent)}
         <div class="ctl">
           <label for="bh">Barrier height <span class="val" id="bhV"></span></label>
           <input type="range" id="bh" min="0.3" max="6" step="0.1" value="3">
-          <p class="hint">A barrier lower than μ lets the parts stay connected, so they share one phase.</p>
+          <p class="hint">In units of μ₀, the chemical potential of a pure condensate at T = 0. A barrier lower than μ lets the parts stay connected, so they share one phase. Thermal atoms with k<sub>B</sub>T above the barrier pass over it.</p>
         </div>
         <div class="regions-head">
           <span class="count" id="nparts">–</span>
@@ -286,6 +286,10 @@ input[type=range]{width:100%; accent-color:var(--accent)}
           <input type="range" id="natoms" min="0" max="100" step="1" value="62">
         </div>
         <button class="btn primary" id="detect">Detect atoms at current time</button>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-top:10px">
+          <label class="check"><input type="checkbox" id="keepAtoms"> Keep previous atoms</label>
+          <button class="btn small" id="clearAtoms">Clear atoms</button>
+        </div>
         <p class="hint">Each atom lands at a random position drawn from the density. With a few hundred atoms the fringes start to show, as in Javanainen and Yoo's simulated experiment.</p>
       </section>
 
@@ -360,10 +364,25 @@ function makeFFT(n){
       }
     }
   }
+  // Column FFTs run on a transposed copy, as row FFTs. Running them in place means a stride of
+  // n·8 bytes (4 KB at n = 512): every element of a column lands in the same cache sets, and the
+  // column pass becomes ~15× slower than the row pass. The transpose works in B×B tiles so
+  // both source and destination stay in cache.
+  const B=32, tre=new Float64Array(n*n), tim=new Float64Array(n*n);
+  function transpose(sr,si,dr,di,sc){
+    for(let bi=0;bi<n;bi+=B){ const ie=Math.min(bi+B,n);
+      for(let bj=0;bj<n;bj+=B){ const je=Math.min(bj+B,n);
+        for(let i=bi;i<ie;i++){ const row=i*n;
+          for(let j=bj;j<je;j++){ const d=j*n+i; dr[d]=sr[row+j]*sc; di[d]=si[row+j]*sc; }
+        }
+      }
+    }
+  }
   return function fft2(re,im,inv){
     for(let r=0;r<n;r++) fft(re,im,r*n,1,inv);
-    for(let c=0;c<n;c++) fft(re,im,c,n,inv);
-    if(inv){const s=1/(n*n), NN=n*n;for(let i=0;i<NN;i++){re[i]*=s;im[i]*=s;}}
+    transpose(re,im,tre,tim,1);
+    for(let r=0;r<n;r++) fft(tre,tim,r*n,1,inv);
+    transpose(tre,tim,re,im,inv?1/(n*n):1);   // the inverse's 1/n² scaling rides along
   };
 }
 
@@ -378,6 +397,7 @@ function derive(){
   S.f0 = Math.max(0, 1 - P.TT**3);
   S.g = P.gN * Math.max(S.f0, 0.02);
   S.mu = Math.sqrt(S.g/Math.PI);
+  S.mu0 = Math.sqrt(P.gN/Math.PI);   // μ of a pure condensate (T = 0): unit of the barrier height
   S.R0 = Math.sqrt(2*S.mu);
   S.xi = 1/Math.sqrt(2*S.mu);
   S.sigma0 = Math.sqrt(Math.max(P.TT*P.kTc, 1e-6));
@@ -388,7 +408,7 @@ function buildGrid(){
   const g={N,NN,dx,x:new Float64Array(N),k2:new Float64Array(NN),vext:new Float64Array(NN),zero:new Float64Array(NN),
     vhold:new Float64Array(NN),vb:new Float64Array(NN),B:new Float64Array(NN),absorb:new Float64Array(NN),kinC:new Float64Array(NN),kinS:new Float64Array(NN),
     re:new Float64Array(NN),im:new Float64Array(NN),psi0:new Float64Array(NN),label:new Int32Array(NN),noise:new Float64Array(NN),
-    fr:new Float64Array(NN),fi:new Float64Array(NN),tot:new Float32Array(NN),fft2:makeFFT(N)};
+    fr:new Float64Array(NN),fi:new Float64Array(NN),tf:new Float64Array(NN),thR:new Float64Array(NN),thI:new Float64Array(NN),tot:new Float32Array(NN),fft2:makeFFT(N)};
   for(let i=0;i<N;i++) g.x[i]=(i-N/2)*dx;
   const dk=TAU/L, margin=0.12*L, half=L/2;
   for(let j=0;j<N;j++){
@@ -425,7 +445,7 @@ function buildBarrier(){
       }
     }
   }
-  const h=P.bh*S.mu;
+  const h=P.bh*S.mu0;
   for(let id=0;id<NN;id++){ G.vb[id]=h*B[id]; G.vhold[id]=G.vext[id]+G.vb[id]; }
 }
 
@@ -438,7 +458,13 @@ function normalize(){
 
 function* prepareJob(){
   derive(); buildBarrier();
-  const {NN,re,im,vhold,k2,fft2}=G, g=S.g, mu=S.mu;
+  const {NN,re,im,vhold,k2,fft2,dx}=G, g=S.g;
+  // Thomas-Fermi start with μ chosen so the atoms fit around the barrier. The barrier-free μ
+  // can leave no room at all when a wide, high barrier covers a small condensate.
+  const tfNorm=m=>{let s=0; for(let id=0;id<NN;id++) s+=Math.max(m-vhold[id],0); return s*dx*dx/g;};
+  let lo=0, hi=Math.max(S.mu,1e-3); while(tfNorm(hi)<1 && hi<1e6) hi*=2;
+  for(let it=0;it<50;it++){const m=0.5*(lo+hi); if(tfNorm(m)<1) lo=m; else hi=m;}
+  const mu=hi;
   for(let id=0;id<NN;id++){const n=Math.max(mu-vhold[id],0)/g; re[id]=Math.sqrt(n); im[id]=0;}
   normalize();
   const h=0.005, ek=new Float64Array(NN);
@@ -481,7 +507,9 @@ function labelRegions(){
   const order=regs.map((r,i)=>i).filter(i=>regs[i].w>0.003).sort((a,b)=>regs[b].w-regs[a].w);
   const remap=new Int32Array(regs.length).fill(-1); order.forEach((o,k)=>remap[o]=k);
   for(let i=0;i<NN;i++) if(label[i]>=0) label[i]=remap[label[i]];
-  S.regions=order.map(o=>regs[o]);
+  // Above Tc there is no condensate: the solver still runs on a tiny placeholder density, but it has no parts.
+  S.regions = S.f0>0 ? order.map(o=>regs[o]) : [];
+  if(S.f0<=0) label.fill(-1);
   // grow labels into barrier cells so the phase is defined there too
   const grow=Math.ceil(3*P.bw/dx)+2;
   for(let it=0;it<grow;it++){
@@ -516,7 +544,7 @@ function makeInitial(force){
   for(let id=0;id<NN;id++){const L=label[id]; const th=(L>=0?S.phases[L]:0)+sp*noise[id]; re[id]=psi0[id]*Math.cos(th); im[id]=psi0[id]*Math.sin(th);}
   S.steps=0; S.holdSteps=Math.round(P.hold/P.dt); S.endSteps=S.holdSteps+Math.round(P.tof/P.dt);
   S.recEvery=Math.max(1,Math.round((P.N>256?0.05:0.02)/P.dt));
-  frames=[]; head=0; atoms=null; record();
+  frames=[]; head=0; resetAtoms(); S.thHat=false; record();
   S.running=true; S.paused=false; S.follow=true; S.replaying=false; dirty=true;
 }
 
@@ -551,15 +579,47 @@ function hwFor(stage,tau){
   return Math.min(P.L/2, Math.max(4, 1.3*Math.max(Rc,Rth)));
 }
 
+// Thermal atoms: a classical gas in the trap plus barrier, n ∝ exp(-(V_trap + fac·V_b)/kT).
+// After release (tof) a classical gas from a harmonic trap expands ballistically, which gives exactly
+//   n(r,τ) = n_G(r,τ) · ⟨exp(-V_b(r0)/kT)⟩,   r0 ~ Gauss(mean r/(1+τ²), variance kT·τ²/(1+τ²)),
+// where n_G is the barrier-free Gaussian of width σ0·√(1+τ²). Only the compact "hole"
+// 1 - exp(-V_b/kT) is smoothed (by FFT), so nothing wraps around the periodic box.
+// Fills G.tf with the factor multiplying the normalized Gaussian n_G, and returns its norm Z = ∫ n_G0·exp(-fac·V_b/kT).
+function thermalFactor(stage,tau){
+  const {N,NN,dx,x,vb,tf,thR,thI,fr,fi,k2,fft2}=G, kT=P.TT*P.kTc, s0=kT;
+  const fac = stage==='trap' ? 1 : stage==='tof' ? 1 : (P.ramp>0 ? Math.max(0,1-tau/P.ramp) : 0);
+  // Z: normalization of the in-trap thermal cloud for this barrier strength
+  let Z=0;
+  for(let j=0;j<N;j++){const y2=x[j]*x[j]; for(let i=0;i<N;i++){const id=j*N+i;
+    Z+=Math.exp(-(x[i]*x[i]+y2)/(2*s0)-fac*vb[id]/kT);}}
+  Z*=dx*dx/(TAU*s0);
+  if(stage!=='tof' || tau<=0){ for(let id=0;id<NN;id++) tf[id]=Math.exp(-fac*vb[id]/kT); return Z; }
+  if(!S.thHat){ for(let id=0;id<NN;id++){thR[id]=1-Math.exp(-vb[id]/kT); thI[id]=0;} fft2(thR,thI,false); S.thHat=true; }
+  const a=1+tau*tau, v=kT*tau*tau/a;
+  for(let id=0;id<NN;id++){const e=Math.exp(-0.5*k2[id]*v); fr[id]=thR[id]*e; fi[id]=thI[id]*e;}
+  fft2(fr,fi,true);
+  for(let j=0;j<N;j++){
+    const gy=x[j]/a/dx+N/2, j0=Math.floor(gy), wy=gy-j0, j1=Math.min(j0+1,N-1);
+    for(let i=0;i<N;i++){
+      const gx=x[i]/a/dx+N/2, i0=Math.floor(gx), wx=gx-i0, i1=Math.min(i0+1,N-1);
+      const p00=fr[j0*N+i0], p01=fr[j0*N+i1], p10=fr[j1*N+i0], p11=fr[j1*N+i1];
+      // clamp: FFT round-off makes the smoothed hole exceed 1 by ~1e-16 inside the barrier
+      tf[j*N+i]=clamp(1-((1-wy)*((1-wx)*p00+wx*p01)+wy*((1-wx)*p10+wx*p11)),0,1);
+    }
+  }
+  return Z;
+}
+
 function record(){
   const {N,NN,dx,x,re,im,tot,fr,fi,k2,fft2}=G;
   const t=S.steps*P.dt, stage=stageAt(S.steps), tau=Math.max(0,(S.steps-S.holdSteps)*P.dt);
   const sig = S.sigma0*(stage==='tof'?Math.sqrt(1+tau*tau):1), s2=sig*sig;
-  const f0=S.f0, th=1-f0, nth0=th/(TAU*s2), useTh=th>1e-5;
+  const f0=S.f0, th=1-f0, useTh=th>1e-5;
+  const nth0 = useTh ? th/(TAU*s2*thermalFactor(stage,tau)) : 0, tf=G.tf;
   let mx=0, mc=0;
   for(let j=0;j<N;j++){const y2=x[j]*x[j]; for(let i=0;i<N;i++){
     const id=j*N+i; const nc=f0*(re[id]*re[id]+im[id]*im[id]);
-    const v=nc+(useTh?nth0*Math.exp(-(x[i]*x[i]+y2)/(2*s2)):0);
+    const v=nc+(useTh?nth0*tf[id]*Math.exp(-(x[i]*x[i]+y2)/(2*s2)):0);
     tot[id]=v; if(v>mx) mx=v; if(nc>mc) mc=nc;
   }}
   const dens=new Uint16Array(NN), ph=new Uint8Array(NN), cb=new Uint8Array(NN);
@@ -567,7 +627,7 @@ function record(){
   const im1=1/(mx||1), ic=1/(mc||1);
   for(let j=0;j<N;j++) for(let i=0;i<N;i++){
     const id=j*N+i, v=tot[id];
-    dens[id]=Math.round(v*im1*65535);
+    dens[id]=Math.round(Math.max(0,v)*im1*65535);   // Uint16: a negative value would wrap to white
     ph[id]=Math.floor((Math.atan2(im[id],re[id])+Math.PI)/TAU*255.999);
     cb[id]=Math.round(Math.sqrt(f0*(re[id]*re[id]+im[id]*im[id])*ic)*255);
     profX[i]+=v*dx; profY[j]+=v*dx;
@@ -624,10 +684,11 @@ function drawView(){
   if(P.view==='atoms' && atoms){
     // The shown frame changed (scrubbing, or the run still advancing): re-sample from it,
     // so the atoms always belong to the time on the clock and to the current field of view.
-    if(f && atoms.fid!==f.id){ atoms.pts=sampleAtoms(f,atoms.u); atoms.t=f.t; atoms.fid=f.id; atoms.start=-Infinity; }
+    if(f && atoms.u && atoms.fid!==f.id){ atoms.pts=sampleAtoms(f,atoms.u); atoms.t=f.t; atoms.fid=f.id; atoms.start=-Infinity; }
     const now=performance.now(); const shown = reduceMotion ? atoms.M : Math.min(atoms.M, Math.floor(atoms.M*(now-atoms.start)/1800));
     atoms.shown=shown; if(shown<atoms.M) dirty=true;
     const r=Math.max(1.1*dpr, W/480); ctx.fillStyle='rgba(255,214,150,0.9)';
+    const old=atoms.old; for(let m=0;m<old.length/2;m++){const px=toC(old[2*m]), py=toC(old[2*m+1]); ctx.beginPath(); ctx.arc(px,py,r,0,TAU); ctx.fill();}
     for(let m=0;m<shown;m++){const px=toC(atoms.pts[2*m]), py=toC(atoms.pts[2*m+1]); ctx.beginPath(); ctx.arc(px,py,r,0,TAU); ctx.fill();}
   }
   // barriers and region labels while the barriers are on
@@ -664,7 +725,7 @@ function drawView(){
   ctx.fillText(`${len} a_ho`, bx, by-4*dpr);
   if(P.view==='atoms'){
     ctx.textAlign='right'; ctx.textBaseline='top';
-    ctx.fillText(atoms?`${atoms.shown??0} atoms · detected at t = ${atoms.t.toFixed(2)}`:'Press "Detect atoms"', W-12*dpr, 12*dpr);
+    ctx.fillText(!atoms?'Press "Detect atoms"':atoms.runs>1?`${atoms.old.length/2+(atoms.shown??0)} atoms from ${atoms.runs} detections · latest at t = ${atoms.t.toFixed(2)}`:`${atoms.shown??0} atoms · detected at t = ${atoms.t.toFixed(2)}`, W-12*dpr, 12*dpr);
   }
 }
 
@@ -776,7 +837,7 @@ function loop(){
 }
 
 /* ---------- actions ---------- */
-function startPrepare(){ derive(); job=prepareJob(); S.running=false; S.replaying=false; atoms=null; updateLabels(); dirty=true; }
+function startPrepare(){ derive(); job=prepareJob(); S.running=false; S.replaying=false; resetAtoms(); updateLabels(); dirty=true; }
 let initTimer=0;
 function scheduleInitial(){ clearTimeout(initTimer); initTimer=setTimeout(()=>{ if(!job) makeInitial(); },90); }
 
@@ -797,7 +858,7 @@ function renderRegions(){
   const box=$('#regions'); box.innerHTML='';
   const n=S.regions.length;
   $('#nparts').textContent = n===0 ? 'No condensate' : n===1 ? '1 connected part' : `${n} separate parts`;
-  if(n<=1){ const p=document.createElement('p'); p.className='empty'; p.textContent=n===1?'The cloud is one piece, so it has one phase. Draw a barrier all the way across to split it.':'Lower the temperature to get a condensate.'; box.appendChild(p); return; }
+  if(n<=1){ const p=document.createElement('p'); p.className='empty'; p.textContent=n===1?'The cloud is one piece, so it has one phase. Draw a barrier all the way across to split it.':S.f0<=0?'Above Tc: no condensate, the cloud is purely thermal.':'Lower the temperature to get a condensate.'; box.appendChild(p); return; }
   S.regions.forEach((r,k)=>{
     const row=document.createElement('div'); row.className='region';
     const sw=document.createElement('span'); sw.className='sw'; sw.style.background=cssHue(S.phases[k]);
@@ -828,9 +889,21 @@ function detect(){
   const f=frames[head]; if(!f) return;
   const M=natomsVal(), u=new Float64Array(3*M);
   for(let i=0;i<u.length;i++) u[i]=Math.random();
-  atoms={u,pts:sampleAtoms(f,u),M,t:f.t,fid:f.id,start:performance.now(),shown:0};
+  const keep=$('#keepAtoms').checked && atoms;
+  if(keep) freezeAtoms();
+  const old=keep?atoms.old:new Float32Array(0), runs=keep?atoms.runs+1:1;
+  atoms={u,pts:sampleAtoms(f,u),M,t:f.t,fid:f.id,start:performance.now(),shown:0,old,runs};
   setView('atoms');
 }
+// "Keep previous atoms": move the newest detection into the fixed pile, so it no longer
+// follows the shown frame. Earlier runs stay where they landed when the next run starts.
+function freezeAtoms(){
+  if(!atoms || !atoms.u) return;
+  const o=new Float32Array(atoms.old.length+atoms.pts.length); o.set(atoms.old); o.set(atoms.pts,atoms.old.length);
+  atoms={old:o,runs:atoms.runs,u:null,pts:new Float32Array(0),M:0,shown:0,t:atoms.t,fid:atoms.fid,start:-Infinity};
+}
+// A new run (Randomize, Run again, new geometry) clears the atoms unless the box is checked.
+function resetAtoms(){ if($('#keepAtoms').checked) freezeAtoms(); else atoms=null; }
 function natomsVal(){ return Math.round(10*Math.pow(500, +$('#natoms').value/100)); }
 
 function setView(v){ P.view=v; offKey=''; document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v))); if(v==='atoms'&&!atoms&&frames.length) { detect(); return; } dirty=true; }
@@ -844,7 +917,7 @@ function updateLabels(){
   $('#densH').textContent=`μ = ${S.mu.toFixed(1)} ħω · radius ${S.R0.toFixed(1)} a_ho · healing length ξ = ${S.xi.toFixed(2)} a_ho`;
   $('#noiseV').textContent=`×${P.noise.toFixed(1)} → ${phaseNoiseAmp().toFixed(2)} rad`;
   $('#bwV').textContent=`${P.bw.toFixed(2)} a_ho`;
-  $('#bhV').textContent=`${P.bh.toFixed(1)} μ`;
+  $('#bhV').textContent=`${P.bh.toFixed(1)} μ₀`;
   $('#holdV').textContent=`${P.hold.toFixed(2)} /ω`;
   $('#rampV').textContent=P.ramp>0?`${P.ramp.toFixed(1)} /ω`:'sudden';
   $('#tofV').textContent=`${P.tof.toFixed(1)} /ω`;
@@ -877,7 +950,7 @@ const EXP={
   random:{cfg:{TT:0.05,gN:1200,bw:0.35,bh:3,hold:0,tof:2.4,mode:'tof',ramp:0,noise:1,preset:'split',phaseInit:'random',view:'density',vort:false},
     text:'When the run ends, press Detect atoms with about 300 atoms. Then press Randomize and detect again. Repeat a few times. Fringes appear every time, but they shift from run to run. Javanainen and Yoo (1996) and Castin and Dalibard (1997) showed this: two condensates have no definite relative phase, and detecting atoms fixes one at random.'},
   heat:{cfg:{TT:0.7,gN:1200,bw:0.35,bh:3,hold:0,tof:2.4,mode:'tof',ramp:0,noise:1.5,preset:'split',phaseInit:'random',view:'density',vort:false},
-    text:'Predict how the final contrast changes with temperature. Then set T/Tc to 0, 0.3, 0.5, 0.7 and 0.9 and note the contrast at the end of each run. The thermal atoms do not interfere and add a smooth background, and phase noise bends the fringes.'},
+    text:'Predict how the final contrast changes with temperature. Then set T/Tc to 0, 0.3, 0.5, 0.7, 0.9 and 1.0 and note the contrast at the end of each run. The thermal atoms do not interfere and add a smooth background, and phase noise bends the fringes.'},
   drift:{cfg:{TT:0.05,gN:1200,bw:0.35,bh:3,hold:1.5,tof:2.0,mode:'tof',ramp:0,noise:1,preset:'offset',phaseInit:'zero',view:'phase',vort:false},
     text:'The barrier sits off centre, so part A holds more atoms than part B and has a higher chemical potential μ. Both parts start with the same phase. Watch their colours in the Phase view separate during the hold: the relative phase grows as Δμ·t/ħ. Change the hold time and see the fringes after release shift.'},
   merge:{cfg:{TT:0.05,gN:1500,bw:0.35,bh:3,hold:0,tof:4,mode:'merge',ramp:1.5,noise:1,preset:'tri',phaseInit:'random',view:'phase',vort:true},
@@ -901,6 +974,8 @@ $('#randPh').addEventListener('click',()=>{ S.phases=S.phases.map((_,k)=>k===0?0
 $('#zeroPh').addEventListener('click',()=>{ S.phases=S.phases.map(()=>0); renderRegions(); makeInitial(); });
 $('#detect').addEventListener('click',detect);
 $('#restart').addEventListener('click',()=>{ if(!job) makeInitial(); });
+$('#keepAtoms').addEventListener('change',e=>{ if(!e.target.checked){ atoms=null; dirty=true; } });
+$('#clearAtoms').addEventListener('click',()=>{ atoms=null; dirty=true; });
 $('#play').addEventListener('click',()=>{
   if(S.replaying){ S.replaying=false; }
   else if(S.running && !S.paused){ S.paused=true; }
